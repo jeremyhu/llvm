@@ -201,16 +201,23 @@ public:
 // FIXME: This should be in a separate file.
 namespace {
   class DarwinPPCAsmBackend : public PPCAsmBackend {
+    Triple TheTriple;
   public:
-    DarwinPPCAsmBackend(const Target &T) : PPCAsmBackend(T, support::big) { }
+    DarwinPPCAsmBackend(const Target &T, const Triple &TT) : PPCAsmBackend(T, support::big), TheTriple(TT) { }
 
     std::unique_ptr<MCObjectTargetWriter>
     createObjectTargetWriter() const override {
       bool is64 = getPointerSize() == 8;
+      MachO::CPUSubTypePowerPC CS = MachO::CPU_SUBTYPE_POWERPC_ALL;
+
+      if (TheTriple.isOSDarwin() && !TheTriple.isMacOSXVersionLT(10,5)) {
+          CS = MachO::CPU_SUBTYPE_POWERPC_7400;
+      }
+
       return createPPCMachObjectWriter(
           /*Is64Bit=*/is64,
           (is64 ? MachO::CPU_TYPE_POWERPC64 : MachO::CPU_TYPE_POWERPC),
-          MachO::CPU_SUBTYPE_POWERPC_ALL);
+          CS);
     }
   };
 
@@ -236,7 +243,7 @@ MCAsmBackend *llvm::createPPCAsmBackend(const Target &T,
                                         const MCTargetOptions &Options) {
   const Triple &TT = STI.getTargetTriple();
   if (TT.isOSDarwin())
-    return new DarwinPPCAsmBackend(T);
+    return new DarwinPPCAsmBackend(T, TT);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TT.getOS());
   bool IsLittleEndian = TT.getArch() == Triple::ppc64le;
