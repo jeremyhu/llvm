@@ -208,10 +208,16 @@ public:
   std::unique_ptr<MCObjectTargetWriter>
   createObjectTargetWriter() const override {
     bool Is64 = TT.isPPC64();
+
+    MachO::CPUSubTypePowerPC CS = MachO::CPU_SUBTYPE_POWERPC_ALL;
+    if (TT.isOSDarwin() && !TT.isMacOSXVersionLT(10,5)) {
+        CS = MachO::CPU_SUBTYPE_POWERPC_7400;
+    }
+
     return createPPCMachObjectWriter(
         /*Is64Bit=*/Is64,
         (Is64 ? MachO::CPU_TYPE_POWERPC64 : MachO::CPU_TYPE_POWERPC),
-        MachO::CPU_SUBTYPE_POWERPC_ALL);
+        CS);
   }
 };
 
