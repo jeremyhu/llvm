@@ -191,7 +191,7 @@ bool AsmPrinter::doInitialization(Module &M) {
   // use the directive, where it would need the same conditionalization
   // anyway.
   Triple TT(getTargetTriple());
-  if (TT.isOSDarwin()) {
+  if (TT.isOSDarwin() && MAI->useIntegratedAssembler()) {
     unsigned Major, Minor, Update;
     TT.getOSVersion(Major, Minor, Update);
     // If there is a version specified, Major will be non-zero.
