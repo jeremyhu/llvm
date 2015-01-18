@@ -262,8 +262,10 @@ bool AsmPrinter::doInitialization(Module &M) {
   // alternative is duplicated code in each of the target asm printers that
   // use the directive, where it would need the same conditionalization
   // anyway.
-  const Triple &Target = TM.getTargetTriple();
-  OutStreamer->EmitVersionForTarget(Target, M.getSDKVersion());
+  if (MAI->useIntegratedAssembler()) {
+    const Triple &Target = TM.getTargetTriple();
+    OutStreamer->EmitVersionForTarget(Target, M.getSDKVersion());
+  }
 
   // Allow the target to emit any magic that it wants at the start of the file.
   EmitStartOfAsmFile(M);
