@@ -70,9 +70,11 @@ ifeq ($(MAKECMDGOALS),install-clang)
   DIRS := tools/clang/tools/driver tools/clang/lib/Headers \
           tools/clang/tools/libclang \
           tools/clang/tools/c-index-test \
-          tools/clang/include/clang-c \
           tools/clang/runtime tools/clang/docs \
-          tools/lto
+          tools/clang/include tools/clang/lib \
+          tools/clang/tools/clang-format \
+          tools/clang/tools/extra/clang-modernize \
+          tools/clang/tools/extra/clang-apply-replacements
   OPTIONAL_DIRS :=
   NO_INSTALL = 1
 endif
