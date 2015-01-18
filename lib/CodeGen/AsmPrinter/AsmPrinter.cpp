@@ -244,7 +244,7 @@ bool AsmPrinter::doInitialization(Module &M) {
   // anyway.
   const Triple &TT = TM.getTargetTriple();
   // If there is a version specified, Major will be non-zero.
-  if (TT.isOSDarwin() && TT.getOSMajorVersion() != 0) {
+  if (TT.isOSDarwin() && TT.getOSMajorVersion() != 0 && MAI->useIntegratedAssembler()) {
     unsigned Major, Minor, Update;
     MCVersionMinType VersionType;
     if (TT.isWatchOS()) {
