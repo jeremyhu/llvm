@@ -502,6 +502,15 @@ void llvm::sys::PrintStackTraceOnErrorSignal(bool DisableCrashReporting) {
   AddSignalHandler(PrintStackTraceSignalHandler, nullptr);
 
 #if defined(__APPLE__) && defined(ENABLE_CRASH_OVERRIDES)
+
+/* These aren't defined in the 10.4 SDK, so provide them here */
+#ifndef EXC_MASK_CRASH
+#define EXC_MASK_CRASH 0x400
+#endif
+#ifndef MACH_EXCEPTION_CODES
+#define MACH_EXCEPTION_CODES 0x80000000
+#endif
+
   // Environment variable to disable any kind of crash dialog.
   if (DisableCrashReporting || getenv("LLVM_DISABLE_CRASH_REPORT")) {
     mach_port_t self = mach_task_self();
