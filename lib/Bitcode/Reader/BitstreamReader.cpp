@@ -39,6 +39,10 @@ bool BitstreamCursor::EnterSubBlock(unsigned BlockID, unsigned *NumWordsP) {
 
   // Get the codesize of this block.
   CurCodeSize = ReadVBR(bitc::CodeLenWidth);
+  // We can't read more than MaxChunkSize at a time
+  if (CurCodeSize > MaxChunkSize)
+    return true;
+
   SkipToFourByteBoundary();
   unsigned NumWords = Read(bitc::BlockSizeWidth);
   if (NumWordsP) *NumWordsP = NumWords;
@@ -199,7 +203,8 @@ unsigned BitstreamCursor::readRecord(unsigned AbbrevID,
       unsigned NumElts = ReadVBR(6);
 
       // Get the element encoding.
-      assert(i+2 == e && "array op not second to last?");
+      if (i+2 != e)
+       report_fatal_error("Array op not second to last");
       const BitCodeAbbrevOp &EltEnc = Abbv->getOperandInfo(++i);
       if (EltEnc.getEncoding() == BitCodeAbbrevOp::Array ||
           EltEnc.getEncoding() == BitCodeAbbrevOp::Blob)

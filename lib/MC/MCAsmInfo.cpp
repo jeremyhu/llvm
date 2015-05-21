@@ -90,6 +90,7 @@ MCAsmInfo::MCAsmInfo() {
   DwarfRegNumForCFI = false;
   NeedsDwarfSectionOffsetDirective = false;
   UseParensForSymbolVariant = false;
+  UseLogicalShr = true;
 
   // FIXME: Clang's logic should be synced with the logic used to initialize
   //        this member and the two implementations should be merged.
@@ -131,7 +132,7 @@ MCAsmInfo::getExprForFDESymbol(const MCSymbol *Sym,
 
   MCContext &Context = Streamer.getContext();
   const MCExpr *Res = MCSymbolRefExpr::Create(Sym, Context);
-  MCSymbol *PCSym = Context.CreateTempSymbol();
+  MCSymbol *PCSym = Context.createTempSymbol();
   Streamer.EmitLabel(PCSym);
   const MCExpr *PC = MCSymbolRefExpr::Create(PCSym, Context);
   return MCBinaryExpr::CreateSub(Res, PC, Context);

@@ -90,6 +90,8 @@ define   <8 x i64> @zext_8i1_to_8xi64(i8 %b) {
 ; CHECK: vpandd
 ; CHECK: vptestmd
 ; CHECK: ret
+; SKX-LABEL: trunc_16i8_to_16i1
+; SKX: vpmovb2m %xmm
 define i16 @trunc_16i8_to_16i1(<16 x i8> %a) {
   %mask_b = trunc <16 x i8>%a to <16 x i1>
   %mask = bitcast <16 x i1> %mask_b to i16
@@ -100,10 +102,24 @@ define i16 @trunc_16i8_to_16i1(<16 x i8> %a) {
 ; CHECK: vpandd
 ; CHECK: vptestmd
 ; CHECK: ret
+; SKX-LABEL: trunc_16i32_to_16i1
+; SKX: vpmovd2m %zmm
 define i16 @trunc_16i32_to_16i1(<16 x i32> %a) {
   %mask_b = trunc <16 x i32>%a to <16 x i1>
   %mask = bitcast <16 x i1> %mask_b to i16
   ret i16 %mask
+}
+
+; SKX-LABEL: trunc_4i32_to_4i1
+; SKX: vpmovd2m        %xmm
+; SKX: kandw
+; SKX: vpmovm2d
+define <4 x i32> @trunc_4i32_to_4i1(<4 x i32> %a, <4 x i32> %b) {
+  %mask_a = trunc <4 x i32>%a to <4 x i1>
+  %mask_b = trunc <4 x i32>%b to <4 x i1>
+  %a_and_b = and <4 x i1>%mask_a, %mask_b
+  %res = sext <4 x i1>%a_and_b to <4 x i32>
+  ret <4 x i32>%res
 }
 
 ; CHECK-LABEL: trunc_8i16_to_8i1
@@ -111,6 +127,9 @@ define i16 @trunc_16i32_to_16i1(<16 x i32> %a) {
 ; CHECK: vpandq LCP{{.*}}(%rip){1to8}
 ; CHECK: vptestmq
 ; CHECK: ret
+
+; SKX-LABEL: trunc_8i16_to_8i1
+; SKX: vpmovw2m %xmm
 define i8 @trunc_8i16_to_8i1(<8 x i16> %a) {
   %mask_b = trunc <8 x i16>%a to <8 x i1>
   %mask = bitcast <8 x i1> %mask_b to i8
@@ -137,10 +156,9 @@ define <16 x i16> @trunc_v16i32_to_v16i16(<16 x i32> %x) {
 }
 
 ; CHECK-LABEL: trunc_i32_to_i1
-; CHECK: testb
-; CHECK: setne
-; CKECK: orl
-; CHECK: ret
+; CHECK: movw    $-4, %ax
+; CHECK: kmovw   %eax, %k1
+; CKECK: korw
 define i16 @trunc_i32_to_i1(i32 %a) {
   %a_i = trunc i32 %a to i1
   %maskv = insertelement <16 x i1> <i1 true, i1 false, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, i1 %a_i, i32 0
@@ -174,3 +192,13 @@ define <8 x i64> @sext_8i1_8i64(<8 x i32> %a1, <8 x i32> %a2) nounwind {
   %y = sext <8 x i1> %x to <8 x i64>
   ret <8 x i64> %y
 }
+
+; CHECK-LABEL: @extload_v8i64
+; CHECK: vpmovsxbq
+define void @extload_v8i64(<8 x i8>* %a, <8 x i64>* %res) {
+  %sign_load = load <8 x i8>, <8 x i8>* %a
+  %c = sext <8 x i8> %sign_load to <8 x i64>
+  store <8 x i64> %c, <8 x i64>* %res
+  ret void
+}
+

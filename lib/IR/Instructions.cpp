@@ -537,9 +537,10 @@ Instruction* CallInst::CreateFree(Value* Source, BasicBlock *InsertAtEnd) {
 //                        InvokeInst Implementation
 //===----------------------------------------------------------------------===//
 
-void InvokeInst::init(Value *Fn, BasicBlock *IfNormal, BasicBlock *IfException,
-                      ArrayRef<Value *> Args, const Twine &NameStr) {
-  FTy = cast<FunctionType>(cast<PointerType>(Fn->getType())->getElementType());
+void InvokeInst::init(FunctionType *FTy, Value *Fn, BasicBlock *IfNormal,
+                      BasicBlock *IfException, ArrayRef<Value *> Args,
+                      const Twine &NameStr) {
+  this->FTy = FTy;
 
   assert(NumOperands == 3 + Args.size() && "NumOperands not set up?");
   Op<-3>() = Fn;
@@ -864,8 +865,9 @@ AllocaInst::AllocaInst(Type *Ty, Value *ArraySize, const Twine &Name,
 
 AllocaInst::AllocaInst(Type *Ty, Value *ArraySize, unsigned Align,
                        const Twine &Name, Instruction *InsertBefore)
-  : UnaryInstruction(PointerType::getUnqual(Ty), Alloca,
-                     getAISize(Ty->getContext(), ArraySize), InsertBefore) {
+    : UnaryInstruction(PointerType::getUnqual(Ty), Alloca,
+                       getAISize(Ty->getContext(), ArraySize), InsertBefore),
+      AllocatedType(Ty) {
   setAlignment(Align);
   assert(!Ty->isVoidTy() && "Cannot allocate void!");
   setName(Name);
@@ -873,8 +875,9 @@ AllocaInst::AllocaInst(Type *Ty, Value *ArraySize, unsigned Align,
 
 AllocaInst::AllocaInst(Type *Ty, Value *ArraySize, unsigned Align,
                        const Twine &Name, BasicBlock *InsertAtEnd)
-  : UnaryInstruction(PointerType::getUnqual(Ty), Alloca,
-                     getAISize(Ty->getContext(), ArraySize), InsertAtEnd) {
+    : UnaryInstruction(PointerType::getUnqual(Ty), Alloca,
+                       getAISize(Ty->getContext(), ArraySize), InsertAtEnd),
+      AllocatedType(Ty) {
   setAlignment(Align);
   assert(!Ty->isVoidTy() && "Cannot allocate void!");
   setName(Name);
@@ -897,10 +900,6 @@ bool AllocaInst::isArrayAllocation() const {
   if (ConstantInt *CI = dyn_cast<ConstantInt>(getOperand(0)))
     return !CI->isOne();
   return true;
-}
-
-Type *AllocaInst::getAllocatedType() const {
-  return getType()->getElementType();
 }
 
 /// isStaticAlloca - Return true if this alloca is in the entry block of the
@@ -932,9 +931,9 @@ LoadInst::LoadInst(Value *Ptr, const Twine &Name, Instruction *InsertBef)
 LoadInst::LoadInst(Value *Ptr, const Twine &Name, BasicBlock *InsertAE)
     : LoadInst(Ptr, Name, /*isVolatile=*/false, InsertAE) {}
 
-LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
+LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    Instruction *InsertBef)
-    : LoadInst(Ptr, Name, isVolatile, /*Align=*/0, InsertBef) {}
+    : LoadInst(Ty, Ptr, Name, isVolatile, /*Align=*/0, InsertBef) {}
 
 LoadInst::LoadInst(Value *Ptr, const Twine &Name, bool isVolatile,
                    BasicBlock *InsertAE)
@@ -954,6 +953,7 @@ LoadInst::LoadInst(Type *Ty, Value *Ptr, const Twine &Name, bool isVolatile,
                    unsigned Align, AtomicOrdering Order,
                    SynchronizationScope SynchScope, Instruction *InsertBef)
     : UnaryInstruction(Ty, Load, Ptr, InsertBef) {
+  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
   setVolatile(isVolatile);
   setAlignment(Align);
   setAtomic(Order, SynchScope);
@@ -994,10 +994,10 @@ LoadInst::LoadInst(Value *Ptr, const char *Name, BasicBlock *InsertAE)
   if (Name && Name[0]) setName(Name);
 }
 
-LoadInst::LoadInst(Value *Ptr, const char *Name, bool isVolatile,
+LoadInst::LoadInst(Type *Ty, Value *Ptr, const char *Name, bool isVolatile,
                    Instruction *InsertBef)
-: UnaryInstruction(cast<PointerType>(Ptr->getType())->getElementType(),
-                   Load, Ptr, InsertBef) {
+    : UnaryInstruction(Ty, Load, Ptr, InsertBef) {
+  assert(Ty == cast<PointerType>(Ptr->getType())->getElementType());
   setVolatile(isVolatile);
   setAlignment(0);
   setAtomic(NotAtomic);
@@ -1245,10 +1245,11 @@ void GetElementPtrInst::init(Value *Ptr, ArrayRef<Value *> IdxList,
 }
 
 GetElementPtrInst::GetElementPtrInst(const GetElementPtrInst &GEPI)
-  : Instruction(GEPI.getType(), GetElementPtr,
-                OperandTraits<GetElementPtrInst>::op_end(this)
-                - GEPI.getNumOperands(),
-                GEPI.getNumOperands()) {
+    : Instruction(GEPI.getType(), GetElementPtr,
+                  OperandTraits<GetElementPtrInst>::op_end(this) -
+                      GEPI.getNumOperands(),
+                  GEPI.getNumOperands()),
+      SourceElementType(GEPI.SourceElementType) {
   std::copy(GEPI.op_begin(), GEPI.op_end(), op_begin());
   SubclassOptionalData = GEPI.SubclassOptionalData;
 }

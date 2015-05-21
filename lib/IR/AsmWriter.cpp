@@ -31,6 +31,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/Statepoint.h"
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/IR/UseListOrder.h"
 #include "llvm/IR/ValueSymbolTable.h"
@@ -1375,7 +1376,7 @@ struct MDFieldPrinter {
                  SlotTracker *Machine, const Module *Context)
       : Out(Out), TypePrinter(TypePrinter), Machine(Machine), Context(Context) {
   }
-  void printTag(const DebugNode *N);
+  void printTag(const DINode *N);
   void printString(StringRef Name, StringRef Value,
                    bool ShouldSkipEmpty = true);
   void printMetadata(StringRef Name, const Metadata *MD,
@@ -1390,7 +1391,7 @@ struct MDFieldPrinter {
 };
 } // end namespace
 
-void MDFieldPrinter::printTag(const DebugNode *N) {
+void MDFieldPrinter::printTag(const DINode *N) {
   Out << FS << "tag: ";
   if (const char *Tag = dwarf::TagString(N->getTag()))
     Out << Tag;
@@ -1447,11 +1448,11 @@ void MDFieldPrinter::printDIFlags(StringRef Name, unsigned Flags) {
   Out << FS << Name << ": ";
 
   SmallVector<unsigned, 8> SplitFlags;
-  unsigned Extra = DebugNode::splitFlags(Flags, SplitFlags);
+  unsigned Extra = DINode::splitFlags(Flags, SplitFlags);
 
   FieldSeparator FlagsFS(" | ");
   for (unsigned F : SplitFlags) {
-    const char *StringF = DebugNode::getFlagString(F);
+    const char *StringF = DINode::getFlagString(F);
     assert(StringF && "Expected valid flag");
     Out << FlagsFS << StringF;
   }
@@ -1472,10 +1473,10 @@ void MDFieldPrinter::printDwarfEnum(StringRef Name, IntTy Value,
     Out << Value;
 }
 
-static void writeGenericDebugNode(raw_ostream &Out, const GenericDebugNode *N,
-                                  TypePrinting *TypePrinter,
-                                  SlotTracker *Machine, const Module *Context) {
-  Out << "!GenericDebugNode(";
+static void writeGenericDINode(raw_ostream &Out, const GenericDINode *N,
+                               TypePrinting *TypePrinter, SlotTracker *Machine,
+                               const Module *Context) {
+  Out << "!GenericDINode(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printTag(N);
   Printer.printString("header", N->getHeader());
@@ -1491,10 +1492,10 @@ static void writeGenericDebugNode(raw_ostream &Out, const GenericDebugNode *N,
   Out << ")";
 }
 
-static void writeMDLocation(raw_ostream &Out, const MDLocation *DL,
+static void writeDILocation(raw_ostream &Out, const DILocation *DL,
                             TypePrinting *TypePrinter, SlotTracker *Machine,
                             const Module *Context) {
-  Out << "!MDLocation(";
+  Out << "!DILocation(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   // Always output the line, since 0 is a relevant and important value for it.
   Printer.printInt("line", DL->getLine(), /* ShouldSkipZero */ false);
@@ -1504,27 +1505,27 @@ static void writeMDLocation(raw_ostream &Out, const MDLocation *DL,
   Out << ")";
 }
 
-static void writeMDSubrange(raw_ostream &Out, const MDSubrange *N,
+static void writeDISubrange(raw_ostream &Out, const DISubrange *N,
                             TypePrinting *, SlotTracker *, const Module *) {
-  Out << "!MDSubrange(";
+  Out << "!DISubrange(";
   MDFieldPrinter Printer(Out);
   Printer.printInt("count", N->getCount(), /* ShouldSkipZero */ false);
   Printer.printInt("lowerBound", N->getLowerBound());
   Out << ")";
 }
 
-static void writeMDEnumerator(raw_ostream &Out, const MDEnumerator *N,
+static void writeDIEnumerator(raw_ostream &Out, const DIEnumerator *N,
                               TypePrinting *, SlotTracker *, const Module *) {
-  Out << "!MDEnumerator(";
+  Out << "!DIEnumerator(";
   MDFieldPrinter Printer(Out);
   Printer.printString("name", N->getName(), /* ShouldSkipEmpty */ false);
   Printer.printInt("value", N->getValue(), /* ShouldSkipZero */ false);
   Out << ")";
 }
 
-static void writeMDBasicType(raw_ostream &Out, const MDBasicType *N,
+static void writeDIBasicType(raw_ostream &Out, const DIBasicType *N,
                              TypePrinting *, SlotTracker *, const Module *) {
-  Out << "!MDBasicType(";
+  Out << "!DIBasicType(";
   MDFieldPrinter Printer(Out);
   if (N->getTag() != dwarf::DW_TAG_base_type)
     Printer.printTag(N);
@@ -1536,10 +1537,10 @@ static void writeMDBasicType(raw_ostream &Out, const MDBasicType *N,
   Out << ")";
 }
 
-static void writeMDDerivedType(raw_ostream &Out, const MDDerivedType *N,
+static void writeDIDerivedType(raw_ostream &Out, const DIDerivedType *N,
                                TypePrinting *TypePrinter, SlotTracker *Machine,
                                const Module *Context) {
-  Out << "!MDDerivedType(";
+  Out << "!DIDerivedType(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printTag(N);
   Printer.printString("name", N->getName());
@@ -1556,10 +1557,10 @@ static void writeMDDerivedType(raw_ostream &Out, const MDDerivedType *N,
   Out << ")";
 }
 
-static void writeMDCompositeType(raw_ostream &Out, const MDCompositeType *N,
+static void writeDICompositeType(raw_ostream &Out, const DICompositeType *N,
                                  TypePrinting *TypePrinter,
                                  SlotTracker *Machine, const Module *Context) {
-  Out << "!MDCompositeType(";
+  Out << "!DICompositeType(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printTag(N);
   Printer.printString("name", N->getName());
@@ -1580,10 +1581,10 @@ static void writeMDCompositeType(raw_ostream &Out, const MDCompositeType *N,
   Out << ")";
 }
 
-static void writeMDSubroutineType(raw_ostream &Out, const MDSubroutineType *N,
+static void writeDISubroutineType(raw_ostream &Out, const DISubroutineType *N,
                                   TypePrinting *TypePrinter,
                                   SlotTracker *Machine, const Module *Context) {
-  Out << "!MDSubroutineType(";
+  Out << "!DISubroutineType(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printDIFlags("flags", N->getFlags());
   Printer.printMetadata("types", N->getRawTypeArray(),
@@ -1591,9 +1592,9 @@ static void writeMDSubroutineType(raw_ostream &Out, const MDSubroutineType *N,
   Out << ")";
 }
 
-static void writeMDFile(raw_ostream &Out, const MDFile *N, TypePrinting *,
+static void writeDIFile(raw_ostream &Out, const DIFile *N, TypePrinting *,
                         SlotTracker *, const Module *) {
-  Out << "!MDFile(";
+  Out << "!DIFile(";
   MDFieldPrinter Printer(Out);
   Printer.printString("filename", N->getFilename(),
                       /* ShouldSkipEmpty */ false);
@@ -1602,10 +1603,10 @@ static void writeMDFile(raw_ostream &Out, const MDFile *N, TypePrinting *,
   Out << ")";
 }
 
-static void writeMDCompileUnit(raw_ostream &Out, const MDCompileUnit *N,
+static void writeDICompileUnit(raw_ostream &Out, const DICompileUnit *N,
                                TypePrinting *TypePrinter, SlotTracker *Machine,
                                const Module *Context) {
-  Out << "!MDCompileUnit(";
+  Out << "!DICompileUnit(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printDwarfEnum("language", N->getSourceLanguage(),
                          dwarf::LanguageString, /* ShouldSkipZero */ false);
@@ -1626,10 +1627,10 @@ static void writeMDCompileUnit(raw_ostream &Out, const MDCompileUnit *N,
   Out << ")";
 }
 
-static void writeMDSubprogram(raw_ostream &Out, const MDSubprogram *N,
+static void writeDISubprogram(raw_ostream &Out, const DISubprogram *N,
                               TypePrinting *TypePrinter, SlotTracker *Machine,
                               const Module *Context) {
-  Out << "!MDSubprogram(";
+  Out << "!DISubprogram(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printString("name", N->getName());
   Printer.printString("linkageName", N->getLinkageName());
@@ -1653,10 +1654,10 @@ static void writeMDSubprogram(raw_ostream &Out, const MDSubprogram *N,
   Out << ")";
 }
 
-static void writeMDLexicalBlock(raw_ostream &Out, const MDLexicalBlock *N,
-                              TypePrinting *TypePrinter, SlotTracker *Machine,
-                              const Module *Context) {
-  Out << "!MDLexicalBlock(";
+static void writeDILexicalBlock(raw_ostream &Out, const DILexicalBlock *N,
+                                TypePrinting *TypePrinter, SlotTracker *Machine,
+                                const Module *Context) {
+  Out << "!DILexicalBlock(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printMetadata("scope", N->getRawScope(), /* ShouldSkipNull */ false);
   Printer.printMetadata("file", N->getRawFile());
@@ -1665,12 +1666,12 @@ static void writeMDLexicalBlock(raw_ostream &Out, const MDLexicalBlock *N,
   Out << ")";
 }
 
-static void writeMDLexicalBlockFile(raw_ostream &Out,
-                                    const MDLexicalBlockFile *N,
+static void writeDILexicalBlockFile(raw_ostream &Out,
+                                    const DILexicalBlockFile *N,
                                     TypePrinting *TypePrinter,
                                     SlotTracker *Machine,
                                     const Module *Context) {
-  Out << "!MDLexicalBlockFile(";
+  Out << "!DILexicalBlockFile(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printMetadata("scope", N->getRawScope(), /* ShouldSkipNull */ false);
   Printer.printMetadata("file", N->getRawFile());
@@ -1679,10 +1680,10 @@ static void writeMDLexicalBlockFile(raw_ostream &Out,
   Out << ")";
 }
 
-static void writeMDNamespace(raw_ostream &Out, const MDNamespace *N,
+static void writeDINamespace(raw_ostream &Out, const DINamespace *N,
                              TypePrinting *TypePrinter, SlotTracker *Machine,
                              const Module *Context) {
-  Out << "!MDNamespace(";
+  Out << "!DINamespace(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printString("name", N->getName());
   Printer.printMetadata("scope", N->getRawScope(), /* ShouldSkipNull */ false);
@@ -1691,24 +1692,24 @@ static void writeMDNamespace(raw_ostream &Out, const MDNamespace *N,
   Out << ")";
 }
 
-static void writeMDTemplateTypeParameter(raw_ostream &Out,
-                                         const MDTemplateTypeParameter *N,
+static void writeDITemplateTypeParameter(raw_ostream &Out,
+                                         const DITemplateTypeParameter *N,
                                          TypePrinting *TypePrinter,
                                          SlotTracker *Machine,
                                          const Module *Context) {
-  Out << "!MDTemplateTypeParameter(";
+  Out << "!DITemplateTypeParameter(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printString("name", N->getName());
   Printer.printMetadata("type", N->getRawType(), /* ShouldSkipNull */ false);
   Out << ")";
 }
 
-static void writeMDTemplateValueParameter(raw_ostream &Out,
-                                          const MDTemplateValueParameter *N,
+static void writeDITemplateValueParameter(raw_ostream &Out,
+                                          const DITemplateValueParameter *N,
                                           TypePrinting *TypePrinter,
                                           SlotTracker *Machine,
                                           const Module *Context) {
-  Out << "!MDTemplateValueParameter(";
+  Out << "!DITemplateValueParameter(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   if (N->getTag() != dwarf::DW_TAG_template_value_parameter)
     Printer.printTag(N);
@@ -1718,10 +1719,10 @@ static void writeMDTemplateValueParameter(raw_ostream &Out,
   Out << ")";
 }
 
-static void writeMDGlobalVariable(raw_ostream &Out, const MDGlobalVariable *N,
+static void writeDIGlobalVariable(raw_ostream &Out, const DIGlobalVariable *N,
                                   TypePrinting *TypePrinter,
                                   SlotTracker *Machine, const Module *Context) {
-  Out << "!MDGlobalVariable(";
+  Out << "!DIGlobalVariable(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printString("name", N->getName());
   Printer.printString("linkageName", N->getLinkageName());
@@ -1736,10 +1737,10 @@ static void writeMDGlobalVariable(raw_ostream &Out, const MDGlobalVariable *N,
   Out << ")";
 }
 
-static void writeMDLocalVariable(raw_ostream &Out, const MDLocalVariable *N,
+static void writeDILocalVariable(raw_ostream &Out, const DILocalVariable *N,
                                  TypePrinting *TypePrinter,
                                  SlotTracker *Machine, const Module *Context) {
-  Out << "!MDLocalVariable(";
+  Out << "!DILocalVariable(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printTag(N);
   Printer.printString("name", N->getName());
@@ -1754,10 +1755,10 @@ static void writeMDLocalVariable(raw_ostream &Out, const MDLocalVariable *N,
   Out << ")";
 }
 
-static void writeMDExpression(raw_ostream &Out, const MDExpression *N,
+static void writeDIExpression(raw_ostream &Out, const DIExpression *N,
                               TypePrinting *TypePrinter, SlotTracker *Machine,
                               const Module *Context) {
-  Out << "!MDExpression(";
+  Out << "!DIExpression(";
   FieldSeparator FS;
   if (N->isValid()) {
     for (auto I = N->expr_op_begin(), E = N->expr_op_end(); I != E; ++I) {
@@ -1775,10 +1776,10 @@ static void writeMDExpression(raw_ostream &Out, const MDExpression *N,
   Out << ")";
 }
 
-static void writeMDObjCProperty(raw_ostream &Out, const MDObjCProperty *N,
+static void writeDIObjCProperty(raw_ostream &Out, const DIObjCProperty *N,
                                 TypePrinting *TypePrinter, SlotTracker *Machine,
                                 const Module *Context) {
-  Out << "!MDObjCProperty(";
+  Out << "!DIObjCProperty(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printString("name", N->getName());
   Printer.printMetadata("file", N->getRawFile());
@@ -1790,10 +1791,10 @@ static void writeMDObjCProperty(raw_ostream &Out, const MDObjCProperty *N,
   Out << ")";
 }
 
-static void writeMDImportedEntity(raw_ostream &Out, const MDImportedEntity *N,
+static void writeDIImportedEntity(raw_ostream &Out, const DIImportedEntity *N,
                                   TypePrinting *TypePrinter,
                                   SlotTracker *Machine, const Module *Context) {
-  Out << "!MDImportedEntity(";
+  Out << "!DIImportedEntity(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
   Printer.printTag(N);
   Printer.printString("name", N->getName());
@@ -2002,6 +2003,10 @@ private:
   // printInfoComment - Print a little comment after the instruction indicating
   // which slot it occupies.
   void printInfoComment(const Value &V);
+
+  // printGCRelocateComment - print comment after call to the gc.relocate
+  // intrinsic indicating base and derived pointer names.
+  void printGCRelocateComment(const Value &V);
 };
 } // namespace
 
@@ -2642,10 +2647,26 @@ void AssemblyWriter::printInstructionLine(const Instruction &I) {
   Out << '\n';
 }
 
+/// printGCRelocateComment - print comment after call to the gc.relocate
+/// intrinsic indicating base and derived pointer names.
+void AssemblyWriter::printGCRelocateComment(const Value &V) {
+  assert(isGCRelocate(&V));
+  GCRelocateOperands GCOps(cast<Instruction>(&V));
+
+  Out << " ; (";
+  writeOperand(GCOps.getBasePtr(), false);
+  Out << ", ";
+  writeOperand(GCOps.getDerivedPtr(), false);
+  Out << ")";
+}
+
 /// printInfoComment - Print a little comment after the instruction indicating
 /// which slot it occupies.
 ///
 void AssemblyWriter::printInfoComment(const Value &V) {
+  if (isGCRelocate(&V))
+    printGCRelocateComment(V);
+
   if (AnnotationWriter)
     AnnotationWriter->printInfoComment(V, Out);
 }

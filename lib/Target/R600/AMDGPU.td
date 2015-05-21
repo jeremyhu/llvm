@@ -1,11 +1,11 @@
-//===-- AMDIL.td - AMDIL Tablegen files --*- tablegen -*-------------------===//
+//===-- AMDGPU.td - AMDGPU Tablegen files ------------------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
 //
-//==-----------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 
 include "llvm/Target/Target.td"
 
@@ -16,6 +16,11 @@ include "llvm/Target/Target.td"
 // Debugging Features
 
 def FeatureDumpCode : SubtargetFeature <"DumpCode",
+        "DumpCode",
+        "true",
+        "Dump MachineInstrs in the CodeEmitter">;
+
+def FeatureDumpCodeLower : SubtargetFeature <"dumpcode",
         "DumpCode",
         "true",
         "Dump MachineInstrs in the CodeEmitter">;

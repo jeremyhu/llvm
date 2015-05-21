@@ -396,6 +396,12 @@ void llvm::RemapInstruction(Instruction *I, ValueToValueMapTy &VMap,
       Tys.push_back(TypeMapper->remapType(Ty));
     CS.mutateFunctionType(FunctionType::get(
         TypeMapper->remapType(I->getType()), Tys, FTy->isVarArg()));
-  } else
-    I->mutateType(TypeMapper->remapType(I->getType()));
+    return;
+  }
+  if (auto *AI = dyn_cast<AllocaInst>(I))
+    AI->setAllocatedType(TypeMapper->remapType(AI->getAllocatedType()));
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(I))
+    GEP->setSourceElementType(
+        TypeMapper->remapType(GEP->getSourceElementType()));
+  I->mutateType(TypeMapper->remapType(I->getType()));
 }

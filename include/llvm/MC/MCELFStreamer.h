@@ -44,7 +44,7 @@ public:
     MCObjectStreamer::reset();
   }
 
-  /// @name MCStreamer Interface
+  /// \name MCStreamer Interface
   /// @{
 
   void InitSections(bool NoExecStack) override;
@@ -101,7 +101,7 @@ private:
   bool SeenIdent;
 
   struct LocalCommon {
-    MCSymbolData *SD;
+    const MCSymbol *Symbol;
     uint64_t Size;
     unsigned ByteAlignment;
   };

@@ -40,6 +40,7 @@
 // (subclass of MCStreamer).
 
 namespace llvm {
+  class MCOperand;
 
 class LineReader {
 private:
@@ -169,8 +170,10 @@ class LLVM_LIBRARY_VISIBILITY NVPTXAsmPrinter : public AsmPrinter {
               } else {
                 O << *Name;
               }
-            } else if (const ConstantExpr *Cexpr = dyn_cast<ConstantExpr>(v)) {
-              O << *AP.lowerConstant(Cexpr);
+            } else if (const ConstantExpr *CExpr = dyn_cast<ConstantExpr>(v0)) {
+              const MCExpr *Expr =
+                AP.lowerConstantForGV(cast<Constant>(CExpr), false);
+              AP.printMCExpr(*Expr, O);
             } else
               llvm_unreachable("symbol type unknown");
             nSym++;
@@ -241,6 +244,10 @@ private:
   bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
                              unsigned AsmVariant, const char *ExtraCode,
                              raw_ostream &) override;
+
+  const MCExpr *lowerConstantForGV(const Constant *CV, bool ProcessingGeneric);
+  void printMCExpr(const MCExpr &Expr, raw_ostream &OS);
+
 protected:
   bool doInitialization(Module &M) override;
   bool doFinalization(Module &M) override;

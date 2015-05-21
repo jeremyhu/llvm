@@ -225,7 +225,7 @@ bool AsmPrinter::doInitialization(Module &M) {
         TM.getTargetTriple(), TM.getTargetCPU(), TM.getTargetFeatureString()));
     OutStreamer->AddComment("Start of file scope inline assembly");
     OutStreamer->AddBlankLine();
-    EmitInlineAsm(M.getModuleInlineAsm()+"\n", *STI);
+    EmitInlineAsm(M.getModuleInlineAsm()+"\n", *STI, TM.Options.MCOptions);
     OutStreamer->AddComment("End of file scope inline assembly");
     OutStreamer->AddBlankLine();
   }
@@ -266,6 +266,8 @@ bool AsmPrinter::doInitialization(Module &M) {
   case ExceptionHandling::WinEH:
     switch (MAI->getWinEHEncodingType()) {
     default: llvm_unreachable("unsupported unwinding information encoding");
+    case WinEH::EncodingType::Invalid:
+      break;
     case WinEH::EncodingType::Itanium:
       ES = new Win64Exception(this);
       break;
@@ -460,7 +462,7 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
   if (GVKind.isThreadLocal() && MAI->hasMachoTBSSDirective()) {
     // Emit the .tbss symbol
     MCSymbol *MangSym =
-      OutContext.GetOrCreateSymbol(GVSym->getName() + Twine("$tlv$init"));
+      OutContext.getOrCreateSymbol(GVSym->getName() + Twine("$tlv$init"));
 
     if (GVKind.isThreadBSS()) {
       TheSection = getObjFileLowering().getTLSBSSSection();
@@ -561,7 +563,7 @@ void AsmPrinter::EmitFunctionHeader() {
 
   if (CurrentFnBegin) {
     if (MAI->useAssignmentForEHBegin()) {
-      MCSymbol *CurPos = OutContext.CreateTempSymbol();
+      MCSymbol *CurPos = OutContext.createTempSymbol();
       OutStreamer->EmitLabel(CurPos);
       OutStreamer->EmitAssignment(CurrentFnBegin,
                                  MCSymbolRefExpr::Create(CurPos, OutContext));
@@ -668,15 +670,15 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   raw_svector_ostream OS(Str);
   OS << "DEBUG_VALUE: ";
 
-  const MDLocalVariable *V = MI->getDebugVariable();
-  if (auto *SP = dyn_cast<MDSubprogram>(V->getScope())) {
+  const DILocalVariable *V = MI->getDebugVariable();
+  if (auto *SP = dyn_cast<DISubprogram>(V->getScope())) {
     StringRef Name = SP->getDisplayName();
     if (!Name.empty())
       OS << Name << ":";
   }
   OS << V->getName();
 
-  const MDExpression *Expr = MI->getDebugExpression();
+  const DIExpression *Expr = MI->getDebugExpression();
   if (Expr->isBitPiece())
     OS << " [bit_piece offset=" << Expr->getBitPieceOffset()
        << " size=" << Expr->getBitPieceSize() << "]";
@@ -1126,7 +1128,7 @@ bool AsmPrinter::doFinalization(Module &M) {
     OutStreamer->SwitchSection(ReadOnlySection);
 
     MCSymbol *AddrSymbol =
-        OutContext.GetOrCreateSymbol(StringRef("__morestack_addr"));
+        OutContext.getOrCreateSymbol(StringRef("__morestack_addr"));
     OutStreamer->EmitLabel(AddrSymbol);
 
     unsigned PtrSize = TM.getDataLayout()->getPointerSize(0);
@@ -1441,7 +1443,7 @@ bool AsmPrinter::EmitSpecialLLVMGlobal(const GlobalVariable *GV) {
     if (TM.getRelocationModel() == Reloc::Static &&
         MAI->hasStaticCtorDtorReferenceInStaticMode()) {
       StringRef Sym(".constructors_used");
-      OutStreamer->EmitSymbolAttribute(OutContext.GetOrCreateSymbol(Sym),
+      OutStreamer->EmitSymbolAttribute(OutContext.getOrCreateSymbol(Sym),
                                        MCSA_Reference);
     }
     return true;
@@ -1453,7 +1455,7 @@ bool AsmPrinter::EmitSpecialLLVMGlobal(const GlobalVariable *GV) {
     if (TM.getRelocationModel() == Reloc::Static &&
         MAI->hasStaticCtorDtorReferenceInStaticMode()) {
       StringRef Sym(".destructors_used");
-      OutStreamer->EmitSymbolAttribute(OutContext.GetOrCreateSymbol(Sym),
+      OutStreamer->EmitSymbolAttribute(OutContext.getOrCreateSymbol(Sym),
                                        MCSA_Reference);
     }
     return true;
@@ -1589,6 +1591,10 @@ void AsmPrinter::EmitInt32(int Value) const {
 /// .set if it avoids relocations.
 void AsmPrinter::EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
                                      unsigned Size) const {
+  if (!MAI->doesDwarfUseRelocationsAcrossSections())
+    if (OutStreamer->emitAbsoluteSymbolDiff(Hi, Lo, Size))
+      return;
+
   // Get the Hi-Lo expression.
   const MCExpr *Diff =
     MCBinaryExpr::CreateSub(MCSymbolRefExpr::Create(Hi, OutContext),
@@ -2291,7 +2297,7 @@ MCSymbol *AsmPrinter::GetBlockAddressSymbol(const BasicBlock *BB) const {
 /// GetCPISymbol - Return the symbol for the specified constant pool entry.
 MCSymbol *AsmPrinter::GetCPISymbol(unsigned CPID) const {
   const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol
+  return OutContext.getOrCreateSymbol
     (Twine(DL->getPrivateGlobalPrefix()) + "CPI" + Twine(getFunctionNumber())
      + "_" + Twine(CPID));
 }
@@ -2305,7 +2311,7 @@ MCSymbol *AsmPrinter::GetJTISymbol(unsigned JTID, bool isLinkerPrivate) const {
 /// FIXME: privatize to AsmPrinter.
 MCSymbol *AsmPrinter::GetJTSetSymbol(unsigned UID, unsigned MBBID) const {
   const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol
+  return OutContext.getOrCreateSymbol
   (Twine(DL->getPrivateGlobalPrefix()) + Twine(getFunctionNumber()) + "_" +
    Twine(UID) + "_set_" + Twine(MBBID));
 }
@@ -2321,7 +2327,7 @@ MCSymbol *AsmPrinter::getSymbolWithGlobalValueBase(const GlobalValue *GV,
 MCSymbol *AsmPrinter::GetExternalSymbolSymbol(StringRef Sym) const {
   SmallString<60> NameStr;
   Mang->getNameWithPrefix(NameStr, Sym);
-  return OutContext.GetOrCreateSymbol(NameStr);
+  return OutContext.getOrCreateSymbol(NameStr);
 }
 
 

@@ -89,6 +89,7 @@ void MCExpr::print(raw_ostream &OS) const {
 
       OS <<  '+';
       break;
+    case MCBinaryExpr::AShr: OS << ">>"; break;
     case MCBinaryExpr::And:  OS <<  '&'; break;
     case MCBinaryExpr::Div:  OS <<  '/'; break;
     case MCBinaryExpr::EQ:   OS << "=="; break;
@@ -96,6 +97,7 @@ void MCExpr::print(raw_ostream &OS) const {
     case MCBinaryExpr::GTE:  OS << ">="; break;
     case MCBinaryExpr::LAnd: OS << "&&"; break;
     case MCBinaryExpr::LOr:  OS << "||"; break;
+    case MCBinaryExpr::LShr: OS << ">>"; break;
     case MCBinaryExpr::LT:   OS <<  '<'; break;
     case MCBinaryExpr::LTE:  OS << "<="; break;
     case MCBinaryExpr::Mod:  OS <<  '%'; break;
@@ -103,7 +105,6 @@ void MCExpr::print(raw_ostream &OS) const {
     case MCBinaryExpr::NE:   OS << "!="; break;
     case MCBinaryExpr::Or:   OS <<  '|'; break;
     case MCBinaryExpr::Shl:  OS << "<<"; break;
-    case MCBinaryExpr::Shr:  OS << ">>"; break;
     case MCBinaryExpr::Sub:  OS <<  '-'; break;
     case MCBinaryExpr::Xor:  OS <<  '^'; break;
     }
@@ -163,7 +164,7 @@ const MCSymbolRefExpr *MCSymbolRefExpr::Create(const MCSymbol *Sym,
 
 const MCSymbolRefExpr *MCSymbolRefExpr::Create(StringRef Name, VariantKind Kind,
                                                MCContext &Ctx) {
-  return Create(Ctx.GetOrCreateSymbol(Name), Kind, Ctx);
+  return Create(Ctx.getOrCreateSymbol(Name), Kind, Ctx);
 }
 
 StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
@@ -282,6 +283,18 @@ StringRef MCSymbolRefExpr::getVariantKindName(VariantKind Kind) {
   case VK_Mips_PCREL_HI16: return "PCREL_HI16";
   case VK_Mips_PCREL_LO16: return "PCREL_LO16";
   case VK_COFF_IMGREL32: return "IMGREL";
+  case VK_Hexagon_PCREL: return "PCREL";
+  case VK_Hexagon_LO16: return "LO16";
+  case VK_Hexagon_HI16: return "HI16";
+  case VK_Hexagon_GPREL: return "GPREL";
+  case VK_Hexagon_GD_GOT: return "GDGOT";
+  case VK_Hexagon_LD_GOT: return "LDGOT";
+  case VK_Hexagon_GD_PLT: return "GDPLT";
+  case VK_Hexagon_LD_PLT: return "LDPLT";
+  case VK_Hexagon_IE: return "IE";
+  case VK_Hexagon_IE_GOT: return "IEGOT";
+  case VK_TPREL: return "tprel";
+  case VK_DTPREL: return "dtprel";
   }
   llvm_unreachable("Invalid variant kind");
 }
@@ -485,8 +498,8 @@ static void AttemptToFoldSymbolOffsetDifference(
     return;
 
   // Eagerly evaluate.
-  Addend += (Layout->getSymbolOffset(&Asm->getSymbolData(A->getSymbol())) -
-             Layout->getSymbolOffset(&Asm->getSymbolData(B->getSymbol())));
+  Addend += Layout->getSymbolOffset(A->getSymbol()) -
+            Layout->getSymbolOffset(B->getSymbol());
   if (Addrs && (&SecA != &SecB))
     Addend += (Addrs->lookup(&SecA) - Addrs->lookup(&SecB));
 
@@ -595,8 +608,7 @@ static bool canExpand(const MCSymbol &Sym, const MCAssembler *Asm, bool InSet) {
     return true;
   if (!Asm)
     return false;
-  const MCSymbolData &SD = Asm->getSymbolData(Sym);
-  return !Asm->getWriter().isWeak(SD);
+  return !Asm->getWriter().isWeak(Sym);
 }
 
 bool MCExpr::EvaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
@@ -709,11 +721,12 @@ bool MCExpr::EvaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
     }
 
     // FIXME: We need target hooks for the evaluation. It may be limited in
-    // width, and gas defines the result of comparisons and right shifts
-    // differently from Apple as.
+    // width, and gas defines the result of comparisons differently from
+    // Apple as.
     int64_t LHS = LHSValue.getConstant(), RHS = RHSValue.getConstant();
     int64_t Result = 0;
     switch (ABE->getOpcode()) {
+    case MCBinaryExpr::AShr: Result = LHS >> RHS; break;
     case MCBinaryExpr::Add:  Result = LHS + RHS; break;
     case MCBinaryExpr::And:  Result = LHS & RHS; break;
     case MCBinaryExpr::Div:  Result = LHS / RHS; break;
@@ -722,6 +735,7 @@ bool MCExpr::EvaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
     case MCBinaryExpr::GTE:  Result = LHS >= RHS; break;
     case MCBinaryExpr::LAnd: Result = LHS && RHS; break;
     case MCBinaryExpr::LOr:  Result = LHS || RHS; break;
+    case MCBinaryExpr::LShr: Result = uint64_t(LHS) >> uint64_t(RHS); break;
     case MCBinaryExpr::LT:   Result = LHS < RHS; break;
     case MCBinaryExpr::LTE:  Result = LHS <= RHS; break;
     case MCBinaryExpr::Mod:  Result = LHS % RHS; break;
@@ -729,7 +743,6 @@ bool MCExpr::EvaluateAsRelocatableImpl(MCValue &Res, const MCAssembler *Asm,
     case MCBinaryExpr::NE:   Result = LHS != RHS; break;
     case MCBinaryExpr::Or:   Result = LHS | RHS; break;
     case MCBinaryExpr::Shl:  Result = LHS << RHS; break;
-    case MCBinaryExpr::Shr:  Result = LHS >> RHS; break;
     case MCBinaryExpr::Sub:  Result = LHS - RHS; break;
     case MCBinaryExpr::Xor:  Result = LHS ^ RHS; break;
     }
