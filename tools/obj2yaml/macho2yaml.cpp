@@ -15,7 +15,21 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LEB128.h"
 
-#include <string.h> // for memcpy
+#include <string.h> // for memcpy abd strnlen
+
+#ifdef __APPLE__
+#include <Availability.h>
+#if __MAC_OS_X_VERSION_MIN_REQUIRED < 1070
+static size_t strnlen(const char *s, size_t maxlen) {
+  size_t l = 0;
+  while (l < maxlen && *s) {
+    l++;
+    s++;
+  }
+  return l;
+}
+#endif
+#endif
 
 using namespace llvm;
 
