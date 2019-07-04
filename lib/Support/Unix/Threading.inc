@@ -237,7 +237,7 @@ SetThreadPriorityResult llvm::set_thread_priority(ThreadPriority Priority) {
              &priority)
              ? SetThreadPriorityResult::SUCCESS
              : SetThreadPriorityResult::FAILURE;
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && defined(PRIO_DARWIN_THREAD) && defined(PRIO_DARWIN_BG)
   // https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getpriority.2.html
   // When setting a thread into background state the scheduling priority is set
   // to lowest value, disk and network IO are throttled. Network IO will be
